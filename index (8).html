@@ -1,0 +1,868 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Компилятор V1</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Lexend+Deca:wght@400;500;700&display=swap" rel="stylesheet">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%23ffffff'/><text x='50%' y='50%' fill='%23111111' font-family='monospace' font-size='20' text-anchor='middle' dominant-baseline='middle'>></text></svg>">
+    <link href="https://unpkg.com/monaco-editor@latest/min/vs/editor/editor.main.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        :root {
+            --bg: #111111;
+            --text: #ffffff;
+            --accent: #ffffff;
+            --accent-text: #111111;
+            --border: 2px solid #ffffff;
+            --shadow: 0 4px 6px rgba(255, 255, 255, 0.1);
+            --gap: 1rem;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Lexend Deca', sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        /* Анимации */
+        @keyframes slideIn {
+            from { transform: translateY(20px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        .animate-in {
+            animation: slideIn 0.4s ease-out forwards;
+        }
+
+        .fade-in {
+            animation: fadeIn 0.3s ease-out forwards;
+        }
+
+        /* Основная структура */
+        .app {
+            display: grid;
+            grid-template-columns: 280px 1fr;
+            height: 100vh;
+        }
+
+        /* Сайдбар */
+        .sidebar {
+            background: var(--bg);
+            border-right: var(--border);
+            padding: 1.5rem;
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+            overflow: hidden;
+        }
+
+        .logo {
+            font-size: 1.5rem;
+            font-weight: bold;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            margin-bottom: 1rem;
+        }
+
+        .logo-icon {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 32px;
+            height: 32px;
+            background: var(--accent);
+            color: var(--accent-text);
+            border-radius: 6px;
+            font-weight: bold;
+        }
+
+        .file-tree {
+            flex-grow: 1;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+
+        .file-item {
+            padding: 0.75rem;
+            cursor: pointer;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            transition: all 0.2s;
+        }
+
+        .file-item:hover {
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        .file-item.active {
+            background: var(--accent);
+            color: var(--accent-text);
+        }
+
+        /* Основная область */
+        .main {
+            display: grid;
+            grid-template-rows: auto 1fr 200px;
+            overflow: hidden;
+        }
+
+        /* Панель инструментов */
+        .toolbar {
+            display: flex;
+            gap: 0.75rem;
+            padding: 1rem;
+            border-bottom: var(--border);
+            background: var(--bg);
+            z-index: 10;
+        }
+
+        .btn {
+            background: none;
+            border: var(--border);
+            padding: 0.75rem 1.25rem;
+            cursor: pointer;
+            border-radius: 8px;
+            font-family: inherit;
+            font-weight: 500;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            transition: all 0.2s;
+        }
+
+        .btn:hover {
+            background: var(--accent);
+            color: var(--accent-text);
+            transform: translateY(-2px);
+            box-shadow: var(--shadow);
+        }
+
+        .btn-primary {
+            background: var(--accent);
+            color: var(--accent-text);
+        }
+
+        .btn-primary:hover {
+            opacity: 0.9;
+        }
+
+        /* Редактор и терминал */
+        .editor-container {
+            position: relative;
+            overflow: hidden;
+        }
+
+        #editor {
+            height: 100%;
+            width: 100%;
+        }
+
+        .terminal {
+            border-top: var(--border);
+            padding: 1rem;
+            font-family: 'Courier New', monospace;
+            overflow-y: auto;
+            background: var(--bg);
+            line-height: 1.5;
+        }
+
+        .terminal pre {
+            margin: 0;
+            white-space: pre-wrap;
+        }
+
+        /* Модальные окна */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.7);
+            backdrop-filter: blur(5px);
+            z-index: 1000;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s ease;
+        }
+
+        .modal-overlay.active {
+            opacity: 1;
+            pointer-events: all;
+        }
+
+        .modal-content {
+            background: var(--bg);
+            border: var(--border);
+            border-radius: 12px;
+            padding: 2rem;
+            width: 90%;
+            max-width: 500px;
+            transform: scale(0.9);
+            opacity: 0;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            position: relative;
+        }
+
+        .modal-content.active {
+            transform: scale(1);
+            opacity: 1;
+        }
+
+        .modal-close {
+            position: absolute;
+            top: 1rem;
+            right: 1rem;
+            background: none;
+            border: none;
+            font-size: 1.5rem;
+            cursor: pointer;
+            color: var(--text);
+        }
+
+        .modal-title {
+            font-size: 1.5rem;
+            font-weight: bold;
+            margin-bottom: 1.5rem;
+        }
+
+        .modal-input {
+            width: 100%;
+            padding: 0.75rem;
+            margin: 1rem 0;
+            border: var(--border);
+            background: var(--bg);
+            color: var(--text);
+            border-radius: 8px;
+            font-family: inherit;
+        }
+
+        .modal-select {
+            width: 100%;
+            padding: 0.75rem;
+            margin: 1rem 0;
+            border: var(--border);
+            background: var(--bg);
+            color: var(--text);
+            border-radius: 8px;
+            font-family: inherit;
+        }
+
+        /* Утилиты */
+        .hidden {
+            display: none !important;
+        }
+
+        .disabled {
+            opacity: 0.5;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body data-theme="dark">
+    <div class="app animate-in">
+        <div class="sidebar">
+            <div class="logo">
+                <span class="logo-icon">></span>
+                <span>Компилятор V1</span>
+            </div>
+            
+            <div class="file-tree" id="file-tree">
+                <!-- Файлы будут добавляться здесь -->
+            </div>
+            
+            <button class="btn btn-primary" onclick="showCreateFileModal()">
+                <i class="fas fa-plus"></i> Новый файл
+            </button>
+        </div>
+        
+        <div class="main">
+            <div class="toolbar">
+                <button class="btn" onclick="handleUpload('file')">
+                    <i class="fas fa-upload"></i> Загрузить файл
+                </button>
+                
+                <button class="btn" onclick="handleUpload('zip')">
+                    <i class="fas fa-file-archive"></i> Загрузить ZIP
+                </button>
+                
+                <button class="btn" onclick="handleUpload('repo')">
+                    <i class="fab fa-github"></i> Загрузить репозиторий
+                </button>
+                
+                <div style="flex-grow: 1;"></div>
+                
+                <button class="btn btn-primary" onclick="runCode()">
+                    <i class="fas fa-play"></i> Запустить
+                </button>
+                
+                <button class="btn" onclick="downloadProject()">
+                    <i class="fas fa-download"></i> Сохранить
+                </button>
+            </div>
+
+            <div class="editor-container">
+                <div id="editor"></div>
+            </div>
+
+            <div class="terminal" id="terminal">
+                <pre>> Готов к работе. Напишите код и нажмите "Запустить".</pre>
+            </div>
+        </div>
+    </div>
+
+    <!-- Модальное окно создания файла -->
+    <div id="createFileModal" class="modal-overlay">
+        <div class="modal-content">
+            <button class="modal-close" onclick="hideCreateFileModal()">×</button>
+            <h3 class="modal-title">Создать новый файл</h3>
+            
+            <input type="text" class="modal-input" id="fileName" placeholder="Название файла (без расширения)">
+            
+            <select class="modal-select" id="fileType">
+                <optgroup label="Программирование">
+                    <option value="html">HTML (.html)</option>
+                    <option value="css">CSS (.css)</option>
+                    <option value="js">JavaScript (.js)</option>
+                    <option value="py">Python (.py)</option>
+                    <option value="cpp">C++ (.cpp)</option>
+                    <option value="cs">C# (.cs)</option>
+                </optgroup>
+                
+                <optgroup label="Графические">
+                    <option value="graphviz">Graphviz (.dot)</option>
+                    <option value="roughjs">RoughJS (.js)</option>
+                </optgroup>
+            </select>
+            
+            <button class="btn btn-primary" onclick="createFile()" style="width: 100%;">
+                <i class="fas fa-plus"></i> Создать файл
+            </button>
+        </div>
+    </div>
+
+    <!-- Модальное окно загрузки репозитория -->
+    <div id="repoModal" class="modal-overlay">
+        <div class="modal-content">
+            <button class="modal-close" onclick="hideRepoModal()">×</button>
+            <h3 class="modal-title">Загрузить репозиторий</h3>
+            
+            <input type="text" class="modal-input" id="repoUrl" placeholder="Владелец/Репозиторий (например: Endermanik13/MyProject)">
+            
+            <div class="btn-group" style="display: flex; gap: 0.5rem; margin-top: 1rem;">
+                <button class="btn" onclick="hideRepoModal()" style="flex: 1;">
+                    Отмена
+                </button>
+                <button class="btn btn-primary" onclick="loadFromRepo()" style="flex: 1;">
+                    <span id="repoLoadText">Загрузить</span>
+                    <span id="repoLoader" class="hidden"><i class="fas fa-spinner fa-spin"></i></span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://unpkg.com/monaco-editor@latest/min/vs/loader.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script>
+        // Инициализация Monaco Editor
+        let editor;
+        require.config({ 
+            paths: { 'vs': 'https://unpkg.com/monaco-editor@latest/min/vs' },
+            'vs/editor/editor.main': { amd: ['vs/editor/editor.main'] }
+        });
+        
+        require(['vs/editor/editor.main'], function() {
+            editor = monaco.editor.create(document.getElementById('editor'), {
+                value: '// Начните писать код здесь\n',
+                language: 'html',
+                theme: 'vs-dark',
+                automaticLayout: true,
+                minimap: { enabled: false },
+                fontSize: 14,
+                scrollBeyondLastLine: false,
+                renderWhitespace: 'selection'
+            });
+            
+            // Инициализация файлов после загрузки редактора
+            initFiles();
+        });
+
+        // Состояние приложения
+        const state = {
+            files: {},
+            currentFile: null,
+            unsavedChanges: false
+        };
+
+        // Инициализация файлов
+        function initFiles() {
+            // Создаем начальный файл
+            state.files['index.html'] = {
+                name: 'index.html',
+                type: 'html',
+                content: '<!DOCTYPE html>\n<html>\n<head>\n\t<title>Компилятор V1</title>\n</head>\n<body>\n\t<h1>Добро пожаловать в Компилятор V1</h1>\n\t<p>Начните писать код!</p>\n</body>\n</html>',
+                unsaved: false
+            };
+            
+            openFile('index.html');
+        }
+
+        // Модальные окна
+        function showCreateFileModal() {
+            document.getElementById('createFileModal').classList.add('active');
+        }
+
+        function hideCreateFileModal() {
+            document.getElementById('createFileModal').classList.remove('active');
+        }
+
+        function showRepoModal() {
+            document.getElementById('repoModal').classList.add('active');
+        }
+
+        function hideRepoModal() {
+            document.getElementById('repoModal').classList.remove('active');
+        }
+
+        // Закрытие модальных окон по ESC
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') {
+                hideCreateFileModal();
+                hideRepoModal();
+            }
+        });
+
+        // Создание файла
+        function createFile() {
+            const name = document.getElementById('fileName').value.trim();
+            const type = document.getElementById('fileType').value;
+            
+            if (!name) {
+                logToTerminal('Ошибка: Введите название файла');
+                return;
+            }
+            
+            // Определяем расширение
+            let extension;
+            switch(type) {
+                case 'graphviz': extension = '.dot'; break;
+                case 'roughjs': extension = '.js'; break;
+                default: extension = '.' + type;
+            }
+            
+            const fullName = name + extension;
+            
+            // Содержимое по умолчанию
+            let content = '';
+            switch(type) {
+                case 'html':
+                    content = `<!DOCTYPE html>\n<html>\n<head>\n\t<title>${name}</title>\n</head>\n<body>\n\t<h1>${name}</h1>\n</body>\n</html>`;
+                    break;
+                case 'css':
+                    content = `/* ${name} */\nbody {\n\tmargin: 0;\n\tpadding: 0;\n}`;
+                    break;
+                case 'js':
+                    content = `// ${name}\nconsole.log('Hello World!');`;
+                    break;
+                case 'py':
+                    content = `# ${name}\nprint("Hello World!")`;
+                    break;
+                case 'cpp':
+                    content = `// ${name}\n#include <iostream>\n\nint main() {\n\tstd::cout << "Hello World!" << std::endl;\n\treturn 0;\n}`;
+                    break;
+                case 'cs':
+                    content = `// ${name}\nusing System;\n\nclass Program {\n\tstatic void Main() {\n\t\tConsole.WriteLine("Hello World!");\n\t}\n}`;
+                    break;
+                case 'graphviz':
+                    content = `// ${name}\ndigraph G {\n\tA -> B;\n\tB -> C;\n\tC -> A;\n}`;
+                    break;
+                case 'roughjs':
+                    content = `// ${name}\n// Пример кода для RoughJS\nconst rc = rough.canvas(document.getElementById('canvas'));\nrc.rectangle(10, 10, 100, 100, { roughness: 2.5 });`;
+                    break;
+            }
+            
+            // Добавляем файл
+            state.files[fullName] = {
+                name: fullName,
+                type: type,
+                content: content,
+                unsaved: true
+            };
+            
+            // Открываем файл
+            openFile(fullName);
+            
+            // Обновляем дерево файлов
+            updateFileTree();
+            
+            // Закрываем модальное окно
+            hideCreateFileModal();
+            
+            logToTerminal(`Создан файл: ${fullName}`);
+        }
+
+        // Обновление дерева файлов
+        function updateFileTree() {
+            const tree = document.getElementById('file-tree');
+            tree.innerHTML = '';
+            
+            Object.values(state.files).forEach(file => {
+                const fileItem = document.createElement('div');
+                fileItem.className = `file-item ${state.currentFile === file.name ? 'active' : ''}`;
+                fileItem.innerHTML = `
+                    <i class="fas fa-file${getFileIcon(file.type)}"></i>
+                    <span>${file.name}</span>
+                `;
+                fileItem.onclick = () => openFile(file.name);
+                tree.appendChild(fileItem);
+            });
+        }
+
+        // Получение иконки для файла
+        function getFileIcon(type) {
+            switch(type) {
+                case 'html': return '-code';
+                case 'css': return '-code';
+                case 'js': return '-code';
+                case 'py': return '-code';
+                case 'cpp': return '-code';
+                case 'cs': return '-code';
+                case 'graphviz': return '-image';
+                case 'roughjs': return '-image';
+                default: return '';
+            }
+        }
+
+        // Открытие файла
+        function openFile(name) {
+            if (!state.files[name]) return;
+            
+            // Сохраняем текущие изменения
+            if (state.currentFile && state.files[state.currentFile] && editor) {
+                state.files[state.currentFile].content = editor.getValue();
+            }
+            
+            // Устанавливаем новый файл
+            state.currentFile = name;
+            const file = state.files[name];
+            
+            // Устанавливаем содержимое в редактор
+            if (editor) {
+                editor.setValue(file.content);
+                
+                // Устанавливаем язык
+                let language;
+                switch(file.type) {
+                    case 'html': language = 'html'; break;
+                    case 'css': language = 'css'; break;
+                    case 'js': language = 'javascript'; break;
+                    case 'py': language = 'python'; break;
+                    case 'cpp': language = 'cpp'; break;
+                    case 'cs': language = 'csharp'; break;
+                    case 'graphviz': language = 'plaintext'; break;
+                    case 'roughjs': language = 'javascript'; break;
+                    default: language = 'plaintext';
+                }
+                monaco.editor.setModelLanguage(editor.getModel(), language);
+            }
+            
+            // Обновляем дерево файлов
+            updateFileTree();
+            
+            logToTerminal(`Открыт файл: ${name}`);
+        }
+
+        // Загрузка файлов
+        function handleUpload(type) {
+            if (type === 'repo') {
+                showRepoModal();
+            } else if (type === 'zip') {
+                const input = document.createElement('input');
+                input.type = 'file';
+                input.accept = '.zip';
+                input.onchange = e => handleZipUpload(e.target.files[0]);
+                input.click();
+            } else {
+                const input = document.createElement('input');
+                input.type = 'file';
+                input.multiple = true;
+                input.onchange = e => handleFileUpload(e.target.files);
+                input.click();
+            }
+        }
+
+        // Обработка ZIP
+        async function handleZipUpload(file) {
+            if (!file) return;
+            
+            try {
+                const zip = await JSZip.loadAsync(file);
+                let loadedFiles = 0;
+                
+                zip.forEach(async (relativePath, zipEntry) => {
+                    if (!zipEntry.dir) {
+                        const content = await zipEntry.async('text');
+                        const name = zipEntry.name.split('/').pop();
+                        
+                        // Определяем тип файла
+                        let type = 'plaintext';
+                        const ext = name.split('.').pop().toLowerCase();
+                        switch(ext) {
+                            case 'html': type = 'html'; break;
+                            case 'css': type = 'css'; break;
+                            case 'js': type = 'js'; break;
+                            case 'py': type = 'py'; break;
+                            case 'cpp': case 'h': case 'hpp': type = 'cpp'; break;
+                            case 'cs': type = 'cs'; break;
+                            case 'dot': type = 'graphviz'; break;
+                        }
+                        
+                        state.files[name] = {
+                            name: name,
+                            type: type,
+                            content: content,
+                            unsaved: true
+                        };
+                        
+                        loadedFiles++;
+                        
+                        if (loadedFiles === 1) {
+                            openFile(name);
+                        }
+                    }
+                });
+                
+                updateFileTree();
+                logToTerminal(`Загружен ZIP-архив: ${file.name}`);
+                
+            } catch (error) {
+                logToTerminal(`Ошибка загрузки ZIP: ${error.message}`);
+            }
+        }
+
+        // Обработка обычных файлов
+        function handleFileUpload(files) {
+            if (!files.length) return;
+            
+            Array.from(files).forEach(file => {
+                const reader = new FileReader();
+                reader.onload = e => {
+                    const name = file.name;
+                    
+                    // Определяем тип файла
+                    let type = 'plaintext';
+                    const ext = name.split('.').pop().toLowerCase();
+                    switch(ext) {
+                        case 'html': type = 'html'; break;
+                        case 'css': type = 'css'; break;
+                        case 'js': type = 'js'; break;
+                        case 'py': type = 'py'; break;
+                        case 'cpp': case 'h': case 'hpp': type = 'cpp'; break;
+                        case 'cs': type = 'cs'; break;
+                        case 'dot': type = 'graphviz'; break;
+                    }
+                    
+                    state.files[name] = {
+                        name: name,
+                        type: type,
+                        content: e.target.result,
+                        unsaved: true
+                    };
+                    
+                    if (files.length === 1) {
+                        openFile(name);
+                    }
+                    
+                    updateFileTree();
+                    logToTerminal(`Загружен файл: ${name}`);
+                };
+                reader.readAsText(file);
+            });
+        }
+
+        // Загрузка из репозитория GitHub
+        async function loadFromRepo() {
+            const repoUrl = document.getElementById('repoUrl').value.trim();
+            if (!repoUrl) {
+                logToTerminal('Ошибка: Введите URL репозитория');
+                return;
+            }
+            
+            const loadText = document.getElementById('repoLoadText');
+            const loader = document.getElementById('repoLoader');
+            
+            loadText.textContent = 'Загрузка...';
+            loader.classList.remove('hidden');
+            
+            try {
+                const response = await fetch(`https://api.github.com/repos/${repoUrl}/contents/`);
+                if (!response.ok) throw new Error('Репозиторий не найден');
+                
+                const data = await response.json();
+                let loadedFiles = 0;
+                
+                for (const item of data) {
+                    if (item.type === 'file') {
+                        const fileResponse = await fetch(item.download_url);
+                        const content = await fileResponse.text();
+                        
+                        let type = 'plaintext';
+                        const ext = item.name.split('.').pop().toLowerCase();
+                        switch(ext) {
+                            case 'html': type = 'html'; break;
+                            case 'css': type = 'css'; break;
+                            case 'js': type = 'js'; break;
+                            case 'py': type = 'py'; break;
+                            case 'cpp': case 'h': case 'hpp': type = 'cpp'; break;
+                            case 'cs': type = 'cs'; break;
+                            case 'dot': type = 'graphviz'; break;
+                        }
+                        
+                        state.files[item.name] = {
+                            name: item.name,
+                            type: type,
+                            content: content,
+                            unsaved: true
+                        };
+                        
+                        loadedFiles++;
+                        
+                        if (loadedFiles === 1) {
+                            openFile(item.name);
+                        }
+                    }
+                }
+                
+                updateFileTree();
+                logToTerminal(`Загружен репозиторий: ${repoUrl}`);
+                hideRepoModal();
+                
+            } catch (error) {
+                logToTerminal(`Ошибка загрузки репозитория: ${error.message}`);
+            } finally {
+                loadText.textContent = 'Загрузить';
+                loader.classList.add('hidden');
+            }
+        }
+
+        // Запуск кода
+        function runCode() {
+            if (!state.currentFile) {
+                logToTerminal('Ошибка: Нет открытого файла');
+                return;
+            }
+            
+            const file = state.files[state.currentFile];
+            file.content = editor.getValue();
+            
+            logToTerminal(`Запуск файла: ${file.name}`);
+            
+            // Здесь будет логика выполнения кода в зависимости от типа файла
+            switch(file.type) {
+                case 'html':
+                    runHTML(file.content);
+                    break;
+                case 'graphviz':
+                    runGraphviz(file.content);
+                    break;
+                case 'roughjs':
+                    runRoughJS(file.content);
+                    break;
+                default:
+                    logToTerminal(`Выполнение кода ${file.type}...`);
+                    // В реальной реализации здесь будет вызов соответствующего интерпретатора/компилятора
+            }
+        }
+
+        // Выполнение HTML
+        function runHTML(content) {
+            const iframe = document.createElement('iframe');
+            iframe.srcdoc = content;
+            iframe.style.width = '100%';
+            iframe.style.height = '300px';
+            iframe.style.border = '1px solid var(--text)';
+            
+            const terminal = document.getElementById('terminal');
+            terminal.innerHTML = '';
+            terminal.appendChild(iframe);
+            
+            logToTerminal('HTML выполнен. Результат показан выше.');
+        }
+
+        // Выполнение Graphviz
+        function runGraphviz(content) {
+            logToTerminal('Graphviz выполняется...');
+            // В реальной реализации здесь будет интеграция с Graphviz
+        }
+
+        // Выполнение RoughJS
+        function runRoughJS(content) {
+            logToTerminal('RoughJS выполняется...');
+            // В реальной реализации здесь будет интеграция с RoughJS
+        }
+
+        // Сохранение проекта
+        function downloadProject() {
+            if (!Object.keys(state.files).length) {
+                logToTerminal('Ошибка: Нет файлов для сохранения');
+                return;
+            }
+            
+            const zip = new JSZip();
+            
+            Object.values(state.files).forEach(file => {
+                zip.file(file.name, file.content);
+            });
+            
+            zip.generateAsync({ type: 'blob' }).then(content => {
+                const a = document.createElement('a');
+                a.href = URL.createObjectURL(content);
+                a.download = 'Архив.zip';
+                a.click();
+            });
+            
+            logToTerminal('Проект сохранен в ZIP-архив');
+        }
+
+        // Логирование в терминал
+        function logToTerminal(message) {
+            const terminal = document.getElementById('terminal');
+            const pre = document.createElement('pre');
+            pre.textContent = `> ${message}`;
+            terminal.appendChild(pre);
+            terminal.scrollTop = terminal.scrollHeight;
+        }
+
+        // Обработчик перед закрытием
+        window.addEventListener('beforeunload', (e) => {
+            if (Object.values(state.files).some(file => file.unsaved)) {
+                e.preventDefault();
+                e.returnValue = '';
+            }
+        });
+    </script>
+</body>
+</html>
